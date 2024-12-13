@@ -1,530 +1,626 @@
 let saleDeploy;
-let r, k, h, g;
+let remainingSales, currentBatch, previousRemaining, previousBatch;
 
 async function loadSale() {
-	try {
-                filterSale = !0;
-		get("saleloadmore").addEventListener("click", preSale);
-		get("salesearch").addEventListener("click", clearSaleSearch);
-		get("saleview").addEventListener("click", saleSearch);
-		$('.sale-filter').on('click', function () {
-			$('.sale-filter').removeClass('selected');
-			$(this).addClass('selected');
-		});
-	} catch (e) {}
+    try {
+        filterSale = true;
 
-	try {
-		$("#waitingsale").show(), $("#loadsale").hide(), $("#nosalelist").hide(), null != selectedAccount ? ($("#gempresale").remove(), r = null, preSale()) : setTimeout(function () {
-			loadSale()
-		}, 2e3)
-	} catch (e) {}
+        // Adding event listeners for sale-related UI elements
+        get("saleloadmore").addEventListener("click", preSale);
+        get("salesearch").addEventListener("click", clearSaleSearch);
+        get("saleview").addEventListener("click", saleSearch);
+
+        // Handling click events on sale filter elements
+        $('.sale-filter').on('click', function () {
+            $('.sale-filter').removeClass('selected');
+            $(this).addClass('selected');
+        });
+    } catch (error) {
+        console.error("Error setting up event listeners: ", error);
+    }
+
+    try {
+        // Showing the waiting sale indicator, hiding the load sale button and no sale list
+        $("#waitingsale").show();
+        $("#loadsale").hide();
+        $("#nosalelist").hide();
+
+        // Checking if a selected account exists
+        if (selectedAccount !== null) {
+            // Removing the gempresale element, resetting remainingSales, and calling preSale
+            $("#gempresale").remove();
+            remainingSales = null;
+            await preSale();
+        } else {
+            // If no selected account, try loading sales again after 2 seconds
+            setTimeout(loadSale, 2000);
+        }
+    } catch (error) {
+        console.error("Error loading sales: ", error);
+    }
 }
 
 async function preSale() {
-	if (selectedAccount) try {
-		switch (await web3.eth.getChainId()) {
-			case 97:
-				saleDeploy = "0x18BbD41a2AB12638624cd87C41dfF9202Dd56307";
-				break;
-			case 56:
-				saleDeploy = "bsc";
-				break;
-			case 1:
-				saleDeploy = "eth";
-				break;
-			case 5:
-				saleDeploy = "0x731b359d0f2fca6506097Bb6EbE8f43EB9404d0f";
-				break;
-			case 137:
-				saleDeploy = "matic";
-				break;
-			case 250:
-				saleDeploy = "ftm";
-				break;
-			case 43114:
-				saleDeploy = "avax"
-		}
-		console.log(r);
-		const a = saleDeploy;
-		var s = new web3.eth.Contract(saleabi, a);
-		var e = await s.methods.saleCount().call({
-			from: selectedAccount
-		});
-		null == r ? e < 4 ? (r = e, k = 0, allSales(r, k)) : (r = e, k = e - 4, allSales(r, k)) : k > 4 ? (r = h = r - 4, k = g = k - 4, allSales(r, k)) : k > 0 ? (r = h = r - 4, k = g = k - k, allSales(r, k)) : get("saleloadmore").disabled = !0
-	} catch (e) {
-		console.log(e)
+    if (selectedAccount) {
+        try {
+            // Getting the current chain ID
+            const chainId = await web3.eth.getChainId();
+            
+            // Setting saleDeploy based on the chain ID
+            switch (chainId) {
+                case 97:
+                    saleDeploy = "0x18BbD41a2AB12638624cd87C41dfF9202Dd56307";
+                    break;
+                case 56:
+                    saleDeploy = "bsc";
+                    break;
+                case 1:
+                    saleDeploy = "eth";
+                    break;
+                case 5:
+                    saleDeploy = "0x731b359d0f2fca6506097Bb6EbE8f43EB9404d0f";
+                    break;
+                case 137:
+                    saleDeploy = "matic";
+                    break;
+                case 250:
+                    saleDeploy = "ftm";
+                    break;
+                case 43114:
+                    saleDeploy = "avax";
+                    break;
+                default:
+                    throw new Error("Unsupported chain ID");
+            }
+            
+            console.log(remainingSales);
 
-		try {
-			console.log('No presale events');
-			$("#gemlist").hide();
-			$("#loadsale").hide();
-			$("#waitingsale").hide();
-			$("#nosalelist").show();
-		} catch (e) {}
+            // Creating a new contract instance
+            const contract = new web3.eth.Contract(saleabi, saleDeploy);
+            
+            // Getting the sale count from the contract
+            const saleCount = await contract.methods.saleCount().call({ from: selectedAccount });
 
-	} else setTimeout(function () {
-		loadSale();
-	}, 2000)
+            // Determine the remaining sales and current batch to process
+            if (remainingSales === null) {
+                if (saleCount < 4) {
+                    remainingSales = saleCount;
+                    currentBatch = 0;
+                } else {
+                    remainingSales = saleCount;
+                    currentBatch = saleCount - 4;
+                }
+            } else {
+                if (currentBatch > 4) {
+                    remainingSales -= 4;
+                    currentBatch -= 4;
+                } else if (currentBatch > 0) {
+                    remainingSales -= 4;
+                    currentBatch = 0;
+                } else {
+                    get("saleloadmore").disabled = true;
+                    return;
+                }
+            }
+            
+            // Call allSales with the determined values
+            allSales(remainingSales, currentBatch);
+
+        } catch (error) {
+            console.error("Error during presale: ", error);
+
+            try {
+                console.log('No presale events');
+                $("#gemlist").hide();
+                $("#loadsale").hide();
+                $("#waitingsale").hide();
+                $("#nosalelist").show();
+            } catch (innerError) {
+                console.error("Error hiding sale elements: ", innerError);
+            }
+        }
+    } else {
+        // If no selected account, retry loading sales after 2 seconds
+        setTimeout(loadSale, 2000);
+    }
 }
 
-async function allSales(o, p) {
+async function allSales(remainingSales, currentBatch) {
+    if (remainingSales === 0) {
+        console.log('No presale events');
+        $("#gemlist").hide();
+        $("#loadsale").hide();
+        $("#waitingsale").hide();
+        $("#nosalelist").show();
+        return;
+    }
 
-	if (o == 0) {
-		console.log('No presale events');
-		$("#gemlist").hide();
-		$("#loadsale").hide();
-		$("#waitingsale").hide();
-		$("#nosalelist").show();
-		return;
-	}
+    try {
+        // Hide "No sale" message and disable "Load more" button
+        $("#nosalelist").hide();
+        get("saleloadmore").disabled = true;
+        console.log('Loading presale events');
+        $("#filterlist").hide();
+        $("#searchsale").hide();
 
-	try {
-		$("#nosalelist").hide();
-		get("saleloadmore").disabled = !0;
-		console.log('Loading presale events');
-		$("#filterlist").hide();
-		$("#searchsale").hide();
-                
-		chainId = await web3.eth.getChainId();
-		chainData = evmChains.getChain(chainId);
-		symbol = chainData.nativeCurrency.symbol;
+        // Fetch chain data and currency symbol
+        const chainId = await web3.eth.getChainId();
+        const chainData = evmChains.getChain(chainId);
+        const symbol = chainData.nativeCurrency.symbol;
 
-		97==chainId?chainC="tBSC":3==chainId?chainC="tETH":chainC=chainData.chain;
+        // Determine chain code based on chain ID
+        const chainCode = chainId === 97 ? "tBSC" : chainId === 3 ? "tETH" : chainData.chain;
 
-		const af = saleDeploy;
-		const salelist = new web3.eth.Contract(saleabi, af);
+        // Initialize contract
+        const saleContract = new web3.eth.Contract(saleabi, saleDeploy);
 
-		if (!$('#gempresale').length) {
-			const L = cre("div");
-			L.className += "presale";
-			L.id = "gempresale";
-			get("gemlist").append(L);
-		}
+        // Create container for presale elements if not exists
+        if (!$('#gempresale').length) {
+            const presaleContainer = document.createElement("div");
+            presaleContainer.className = "presale";
+            presaleContainer.id = "gempresale";
+            get("gemlist").append(presaleContainer);
+        }
 
-		for (var i = o; i > p; i--) {
-			try {
-				var q = await salelist.methods.salestats(i).call({
-					from: selectedAccount
-				});
-				var d = await salelist.methods.saledates(i).call({
-					from: selectedAccount
-				});
-				var xa = await salelist.methods.auditextern(q.token).call({
-					from: selectedAccount
-				});
-				var ka = await salelist.methods.kyc(q.token).call({
-					from: selectedAccount
-				});
-				var ts = Math.round((new Date()).getTime() / 1000);
+        for (let i = remainingSales; i > currentBatch; i--) {
+            try {
+                // Fetch sale details
+                const saleStats = await saleContract.methods.salestats(i).call({ from: selectedAccount });
+                const saleDates = await saleContract.methods.saledates(i).call({ from: selectedAccount });
+                const auditStatus = await saleContract.methods.auditextern(saleStats.token).call({ from: selectedAccount });
+                const kycStatus = await saleContract.methods.kyc(saleStats.token).call({ from: selectedAccount });
+                const currentTime = Math.floor(Date.now() / 1000);
 
-				var link = "https://gemsale.app/?chain=" + chainC + "&sale=" + q.id + "&tk=" + q.name + "#defi-presale";
+                // Generate sale link
+                const saleLink = `https://gemsale.app/?chain=${chainCode}&sale=${saleStats.id}&tk=${saleStats.name}#defi-presale`;
 
-				resimg = await checkImage(d.logo);
+                // Check if logo image exists
+                const logoImage = await checkImage(saleDates.logo);
 
-				crefund = q.acontract;
-				checksale = new web3.eth.Contract(csaleabi, crefund);
+                // Create contract instance for sale
+                const refundContract = new web3.eth.Contract(csaleabi, saleStats.acontract);
 
-				const raised = await checksale.methods.weiRaised().call({
-					from: selectedAccount
-				});
-				const checkstat = await checksale.methods.checkStatus().call({
-					from: selectedAccount
-				});
+                // Fetch raised amount and status
+                const raisedAmount = await refundContract.methods.weiRaised().call({ from: selectedAccount });
+                const saleStatus = await refundContract.methods.checkStatus().call({ from: selectedAccount });
 
-				var gemmint = false;
-				try {
-					caudit = new web3.eth.Contract(tokabi, q.token);
-					var gemmint = await caudit.methods.GemMintDeploy().call({
-						from: selectedAccount
-					});
-				} catch (e) {} finally {}
+                // Check for GemMint deployment
+                let isGemMint = false;
+                try {
+                    const auditContract = new web3.eth.Contract(tokabi, saleStats.token);
+                    isGemMint = await auditContract.methods.GemMintDeploy().call({ from: selectedAccount });
+                } catch (error) {
+                    // Handle error silently
+                }
 
-				1 == xa.audit ? color_aud = "#008cba" : color_aud = "#9393931f";
+                // Determine audit and KYC colors
+                const auditColor = auditStatus.audit ? "#008cba" : "#9393931f";
+                const kycColor = kycStatus.dox ? "#009688" : "#9393931f";
 
-				1 == ka.dox ? color_kyc = "#009688" : color_kyc = "#9393931f";
+                // Convert and format values
+                const softCap = parseFloat(web3.utils.fromWei(saleStats.softcap, 'ether')).toFixed(1);
+                const hardCap = parseFloat(web3.utils.fromWei(saleStats.hardcap, 'ether')).toFixed(1);
+                const raisedEther = parseFloat(web3.utils.fromWei(raisedAmount, 'ether')).toFixed(2);
+                const progress = parseFloat((Number(raisedAmount) / Number(saleStats.hardcap)) * 100).toFixed(0);
 
-				var scap = web3.utils.fromWei(q.softcap, 'ether');
-				var scap = parseFloat(scap).toFixed(1);
-				var hcap = web3.utils.fromWei(q.hardcap, 'ether');
-				var hcap = parseFloat(hcap).toFixed(1);
+                // Determine audit content and class
+                const auditContent = auditStatus.audit ? "Audited Contract" : isGemMint ? "GemMint Contract" : "Unaudited Contract";
+                const auditClass = auditStatus.audit ? "audit external" : isGemMint ? "audit gemmint" : "audit";
 
-				var tkc = web3.utils.fromWei(raised, 'ether');
-				var tkc = parseFloat(tkc).toFixed(2);
+                // Calculate days until unlock
+                const daysUntilUnlock = Math.round((saleDates.unlock - saleDates.start) / 86400);
 
-				var buyts = (Number(raised) / Number(q.hardcap)) * 100;
-				var buyt = parseFloat(buyts).toFixed(0);
+                // Determine status content and class
+                let statusContent, statusClass, timeText, timeClass;
+                switch (saleStatus) {
+                    case "FAILED":
+                        statusContent = "✕ FAILED";
+                        statusClass = "status inactive";
+                        timeText = "Presale: Failed";
+                        timeClass = "time time-inactive";
+                        break;
+                    case "SUCCESS":
+                        statusContent = "✓ SUCCESS";
+                        statusClass = "status success";
+                        timeText = "Presale: Success";
+                        timeClass = "time time-success";
+                        break;
+                    case "ENDED":
+                        statusContent = "⦾ ENDED";
+                        statusClass = "status end";
+                        timeText = "Presale: Ended";
+                        timeClass = "time time-ended";
+                        break;
+                    case "INACTIVE":
+                        statusContent = "✕ INACTIVE";
+                        statusClass = "status inactive";
+                        timeText = "Presale: Inactive";
+                        timeClass = "time time-inactive";
+                        break;
+                    case "UPCOMING":
+                        statusContent = "△ UPCOMING";
+                        statusClass = "status upcoming";
+                        timeText = "Presale: Upcoming";
+                        timeClass = "time time-upcoming";
+                        break;
+                    case "LIVE":
+                        statusContent = "⦿ LIVE";
+                        statusClass = "status live";
+                        timeText = "Presale: Live";
+                        timeClass = "time time-ongoing";
+                        break;
+                    default:
+                        statusContent = "UNKNOWN";
+                        statusClass = "status unknown";
+                        timeText = "Presale: Unknown";
+                        timeClass = "time time-unknown";
+                }
 
-				if (xa.audit == true) {
-					audit_content = "Audited Contract";
-					audit_class = "audit external";
-				} else if (gemmint == true) {
-					audit_content = "GemMint Contract";
-					audit_class = "audit gemmint";
-				} else {
-					audit_content = "Unaudited Contract";
-					audit_class = "audit";
-				}
-
-				var difference = d.unlock - d.start;
-				var daysD = Math.round(difference / 86400);
-				var settime = "time" + q.id;
-
-				switch (checkstat) {
-					case "FAILED":
-						status_content = "✕ FAILED", status_class = "status inactive", time_text = "Presale: Failed", time_class = "time time-inactiv";
-						break;
-					case "SUCCESS":
-						status_content = "✓ SUCCESS", status_class = "status success", time_text = "Presale: Success", time_class = "time time-success";
-						break;
-					case "ENDED":
-						status_content = "⦾ ENDED", status_class = "status end", time_text = "Presale: Ended", time_class = "time time-ended";
-						break;
-					case "INACTIVE":
-						status_content = "✕ INACTIVE", status_class = "status inactive", time_text = "Presale: Inactive", time_class = "time time-inactiv";
-						break;
-					case "UPCOMING":
-						status_content = "△ UPCOMING", status_class = "status upcoming", time_text = "Presale: Upcoming", time_class = "time time-upcoming";
-						break;
-					case "LIVE":
-						status_content = "⦿ LIVE", status_class = "status live", time_text = "Presale: Live", time_class = "time time-ongoing"
-				}
-                                const GemSale = get("gempresale");
-				const C = document.createElement('div');
-				C.id = 'presale' + q.id;
-				C.className += 'pre-sale new-sale';
-				C.innerHTML = `
-<div class="sale-card" data-link="${link}">
+                // Create presale card element
+                const presaleCard = document.createElement('div');
+                presaleCard.id = `presale${saleStats.id}`;
+                presaleCard.className = 'pre-sale new-sale';
+                presaleCard.innerHTML = `
+<div class="sale-card" data-link="${saleLink}">
    <div class="sale_header">
-      <img class="logo lozad" data-src="${resimg}" src="/static/images/imgloads.gif">
-      <p id="status" class="${status_class}">${status_content}</p>
-      <h3 class="name">${q.name}</h3>
+      <img class="logo lozad" data-src="${logoImage}" src="/static/images/imgloads.gif">
+      <p id="status" class="${statusClass}">${statusContent}</p>
+      <h3 class="name">${saleStats.name}</h3>
       <div class="price rate">
-         <p>1 ${symbol} = ${q.salerate} ${q.symbol}</p>
+         <p>1 ${symbol} = ${saleStats.salerate} ${saleStats.symbol}</p>
       </div>
       <hr>
    </div>
    <div class="card-click">
-      <i id="audit-card" style="color: ${color_aud};" class="fas fa-file-certificate gem-xlarge"></i><i id="kyc-card" style="color: ${color_kyc};" class="fas fa-id-card-alt gem-xlarge"></i>
+      <i id="audit-card" style="color: ${auditColor};" class="fas fa-file-certificate gem-xlarge"></i><i id="kyc-card" style="color: ${kycColor};" class="fas fa-id-card-alt gem-xlarge"></i>
       <div class="soft-hard-cap">
          <p>Soft / Hard Cap:</p>
-         <h5>${scap} ${symbol} - ${hcap} ${symbol}</h5>
+         <h5>${softCap} ${symbol} - ${hardCap} ${symbol}</h5>
       </div>
-      <div class="buy-meter" id="buyt${q.id}" role="progressbar" style="--value:${buyt}"></div>
-      <div class="airdrop-stats"><span class="raisedhardcap">Raised: ${tkc} ${symbol}</span><span>Hard Cap: ${hcap} ${symbol}</span></div>
+      <div class="buy-meter" id="buyt${saleStats.id}" role="progressbar" style="--value:${progress}"></div>
+      <div class="airdrop-stats"><span class="raisedhardcap">Raised: ${raisedEther} ${symbol}</span><span>Hard Cap: ${hardCap} ${symbol}</span></div>
       <div class="audits">
-         <p class="${audit_class}">${audit_content}</p>
+         <p class="${auditClass}">${auditContent}</p>
       </div>
-      <div class="liquidity"><span class="liq">Liquidity: ${d.liquidityper}%</span></div>
-      <div class="unlock"><span>Unlocks in: ${daysD} Days</span></div>
+      <div class="liquidity"><span class="liq">Liquidity: ${saleDates.liquidityper}%</span></div>
+      <div class="unlock"><span>Unlocks in: ${daysUntilUnlock} Days</span></div>
    </div>
    <div class="sale_footer">
       <hr>
-      <div id="time${q.id}" class="${time_class}">${time_text}</div>
-      <a class="cardbutton sale-link" href="${link}" target="_blank"><i class="fas fa-external-link"></i></a>
+      <div id="time${saleStats.id}" class="${timeClass}">${timeText}</div>
+      <a class="cardbutton sale-link" href="${saleLink}" target="_blank"><i class="fas fa-external-link"></i></a>
    </div>
-</div>`
-				GemSale.appendChild(C);
+</div>`;
+                get("gempresale").appendChild(presaleCard);
 
-				$(document).ready(function () {
-					$('.card-click').click(function () {
-						pushUrl();
-					});
-				});
-				switch (checkstat) {
-					case "UPCOMING":
-						countstart(settime, d.start, 1);
-						break;
-					case "LIVE":
-						countstart(settime, d.end, 2)
-				}
+                // Add click event to card
+                $(document).ready(function () {
+                    $('.card-click').click(function () {
+                        pushUrl();
+                    });
+                });
 
-				$("#waitingsale").hide();
-				$("#loadsale").show();
-                                filterSale = !1;
-			} catch (e) {
-				console.log('break');
-				$("#gempresale").remove();
-				$("#loadsale").hide();
-				$("#waitingsale").hide();
-				$("#nosalelist").hide();
-				break;
-			}
-		}
-	} catch (e) {
-		try {
-			$("#gempresale").remove();
-			$("#loadsale").hide();
-			$("#waitingsale").hide();
-			$("#nosalelist").show();
-			console.log(e);
-		} catch (e) {}
-	}
-	try {
-               if(p > 0) {get("saleloadmore").disabled = !1};
-	} catch (e) {}
+                // Start countdown based on sale status
+                if (saleStatus === "UPCOMING") {
+                    countstart(`time${saleStats.id}`, saleDates.start, 1);
+                } else if (saleStatus === "LIVE") {
+                    countstart(`time${saleStats.id}`, saleDates.end, 2);
+                }
+
+                // Update UI states
+                $("#waitingsale").hide();
+                $("#loadsale").show();
+                filterSale = false;
+            } catch (error) {
+                console.error('Error processing sale:', error);
+                $("#gempresale").remove();
+                $("#loadsale").hide();
+                $("#waitingsale").hide();
+                $("#nosalelist").hide();
+                break;
+            }
+        }
+    } catch (error) {
+        try {
+            $("#gempresale").remove();
+            $("#loadsale").hide();
+            $("#waitingsale").hide();
+            $("#nosalelist").show();
+            console.log(error); }
 }
-var countsalet;
+var saleCountdownTimer;
 
-function countstart(e, t, z) {
+function initializeCountdown(elementId, targetTime, mode) {
+    var element = get(elementId);
 
-	var n = get(e);
-	countsalet = setInterval(function () {
-		try {
-			var e = 1e3 * t - Date.now();
-			if (e > 0) {
-				var o = new Date,
-					d = (o.getTime(), o.getTimezoneOffset(), Math.floor(e / 864e5)),
-					f = Math.floor(e % 864e5 / 36e5),
-					i = Math.floor(e % 36e5 / 6e4),
-					l = Math.floor(e % 6e4 / 1e3),
-					h = ("0" + f).slice(-2),
-					m = ("0" + i).slice(-2),
-					s = ("0" + l).slice(-2);
-				if (z == 1) {
-					n.innerHTML = "Starts In: " + d + "d " + h + "h " + m + "m " + s + "s"
-				} else if (z == 2) {
-					n.innerHTML = "Ends In: " + d + "d " + h + "h " + m + "m " + s + "s"
-				}
-			}
-		} catch (e) {
-			clearInterval(countsalet);
-		}
-	}, 1e3)
+    saleCountdownTimer = setInterval(function () {
+        try {
+            // Calculate the remaining time in milliseconds
+            var remainingTime = targetTime * 1000 - Date.now();
+            
+            if (remainingTime > 0) {
+                // Create a new Date object
+                var now = new Date();
+                
+                // Calculate the time differences
+                var days = Math.floor(remainingTime / 86400000);
+                var hours = Math.floor((remainingTime % 86400000) / 3600000);
+                var minutes = Math.floor((remainingTime % 3600000) / 60000);
+                var seconds = Math.floor((remainingTime % 60000) / 1000);
 
+                // Format the time components
+                var formattedHours = ("0" + hours).slice(-2);
+                var formattedMinutes = ("0" + minutes).slice(-2);
+                var formattedSeconds = ("0" + seconds).slice(-2);
+
+                // Update the element's inner HTML based on the mode (1: Starts In, 2: Ends In)
+                if (mode == 1) {
+                    element.innerHTML = `Starts In: ${days}d ${formattedHours}h ${formattedMinutes}m ${formattedSeconds}s`;
+                } else if (mode == 2) {
+                    element.innerHTML = `Ends In: ${days}d ${formattedHours}h ${formattedMinutes}m ${formattedSeconds}s`;
+                }
+            }
+        } catch (error) {
+            // Clear the interval in case of an error
+            clearInterval(saleCountdownTimer);
+        }
+    }, 1000);
 }
-
 
 async function getSaleSearch() {
-	if (null == selectedAccount) return GemWarning('Please connect wallet');
-	const t = get("salesearch").value;
-	if (0 == await web3.utils.isAddress(t)) {
-		invalid.style.display = "block";
-		obj("#invalid").textContent = "Wrong token address";
-		return false;
-	} else if ("0x" == await web3.eth.getCode(t)) {
-		invalid.style.display = "block";
-		obj("#invalid").textContent = "Address is not contract";
-		return false;
-	} else {
-		invalid.style.display = "none";
-		return true;
-	}
+    if (selectedAccount === null) {
+        GemWarning('Please connect wallet');
+        return false;
+    }
+
+    const tokenAddress = get("salesearch").value;
+
+    try {
+        // Check if the address is valid
+        const isValidAddress = await web3.utils.isAddress(tokenAddress);
+        if (!isValidAddress) {
+            invalid.style.display = "block";
+            obj("#invalid").textContent = "Wrong token address";
+            return false;
+        }
+
+        // Check if the address is a contract
+        const code = await web3.eth.getCode(tokenAddress);
+        if (code === "0x") {
+            invalid.style.display = "block";
+            obj("#invalid").textContent = "Address is not a contract";
+            return false;
+        }
+
+        // If both checks pass, hide the invalid message
+        invalid.style.display = "none";
+        return true;
+    } catch (error) {
+        console.error("Error during token address validation: ", error);
+        return false;
+    }
 }
 
-let searcSale = !1;
+let searchSale = false;
+
+// Function to initiate sale search
 async function saleSearch() {
-	searcSale || (searcSale = !0, saleS())
+    if (!searchSale) {
+        searchSale = true;
+        await performSaleSearch();
+    }
 }
 
+// Function to clear the sale search invalid message
 function clearSaleSearch() {
-	invalid.style.display = 'none';
+    invalid.style.display = 'none';
 }
 
-async function saleS() {
-	var check = await getSaleSearch();
-	if (check == false) {
-		searcSale = !1;
-		return;
-	}
-	chainId = await web3.eth.getChainId();
-	chainData = evmChains.getChain(chainId);
-	symbol = chainData.nativeCurrency.symbol;
+async function performSaleSearch() {
+    var check = await getSaleSearch();
+    if (!check) {
+        searchSale = false;
+        return;
+    }
 
-	97 == chainId ? chainC = "tBSC" : 3 == chainId ? chainC = "tETH" : chainC = chainData.chain;
-	switch (await web3.eth.getChainId()) {
-		case 97:
-			saleDeploy = "0x18BbD41a2AB12638624cd87C41dfF9202Dd56307";
-			break;
-		case 56:
-			saleDeploy = "bsc";
-			break;
-		case 1:
-			saleDeploy = "eth";
-			break;
-		case 5:
-			saleDeploy = "0x731b359d0f2fca6506097Bb6EbE8f43EB9404d0f";
-			break;
-		case 137:
-			saleDeploy = "matic";
-			break;
-		case 250:
-			saleDeploy = "ftm";
-			break;
-		case 43114:
-			saleDeploy = "avax"
-	}
-	const af = saleDeploy;
-	try {
-		const salelist = new web3.eth.Contract(saleabi, af);
-		const searchs = get('salesearch').value;
-		console.log(searchs)
-		const schecsum = await web3.utils.toChecksumAddress(searchs);
-		const x = await salelist.methods.filterLength(schecsum).call({
-			from: selectedAccount
-		});
-		if (x == 0) {
-			invalid.style.display = 'block';
-			obj("#invalid").textContent = "No presale event found";
-			console.log('No presale found')
-			searcSale = !1;
-			return;
-		}
-		console.log('Presale event found')
-		$('#gempresale').remove();
-		$('#listsale').remove();
-		$("#filtersale").remove();
-		gemlist.style.display = "none";
-		$("#filterlist").hide();
-		searchsale.style.display = "block";
-		$("#loadsale").hide();
-		$("#waitingsale").show();
-		if (!$('#listsale').length) {
-			const L = cre("div");
-			L.className += "presale";
-			L.id = "listsale";
-			get("searchsale").append(L);
-			searcSale = !1;
-		}
-		const G = get("listsale");
-		for (var i = 0; i < x; i++) {
-			try {
-				var N = await salelist.methods.filterSale(schecsum, i).call({
-					from: selectedAccount
-				});
-				var q = await salelist.methods.salestats(N).call({
-					from: selectedAccount
-				});
-				let d = await salelist.methods.saledates(N).call({
-					from: selectedAccount
-				});
-				xa = await salelist.methods.auditextern(q.token).call({
-					from: selectedAccount
-				});
-				ka = await salelist.methods.kyc(q.token).call({
-					from: selectedAccount
-				});
-				var ts = Math.round((new Date()).getTime() / 1000);
+    const chainId = await web3.eth.getChainId();
+    const chainData = evmChains.getChain(chainId);
+    const symbol = chainData.nativeCurrency.symbol;
 
-				var link = "https://gemsale.app/?chain=" + chainC + "&sale=" + q.id + "&tk=" + q.name + "#defi-presale";
+    // Set chain code
+    const chainCode = chainId === 97 ? "tBSC" : chainId === 3 ? "tETH" : chainData.chain;
 
-                                resimg = await checkImage(d.logo);
+    // Set saleDeploy based on chain ID
+    switch (chainId) {
+        case 97:
+            saleDeploy = "0x18BbD41a2AB12638624cd87C41dfF9202Dd56307";
+            break;
+        case 56:
+            saleDeploy = "bsc";
+            break;
+        case 1:
+            saleDeploy = "eth";
+            break;
+        case 5:
+            saleDeploy = "0x731b359d0f2fca6506097Bb6EbE8f43EB9404d0f";
+            break;
+        case 137:
+            saleDeploy = "matic";
+            break;
+        case 250:
+            saleDeploy = "ftm";
+            break;
+        case 43114:
+            saleDeploy = "avax";
+            break;
+        default:
+            console.error("Unsupported chain ID");
+            return;
+    }
 
-				crefund = q.acontract;
-				checksale = new web3.eth.Contract(csaleabi, crefund);
+    try {
+        const salelist = new web3.eth.Contract(saleabi, saleDeploy);
+        const searchValue = get('salesearch').value;
+        console.log(searchValue);
+        const checksumAddress = await web3.utils.toChecksumAddress(searchValue);
+        const filterLength = await salelist.methods.filterLength(checksumAddress).call({ from: selectedAccount });
+        if (filterLength === 0) {
+            invalid.style.display = 'block';
+            obj("#invalid").textContent = "No presale event found";
+            console.log('No presale found');
+            searchSale = false;
+            return;
+        }
+        console.log('Presale event found');
+        $('#gempresale').remove();
+        $('#listsale').remove();
+        $("#filtersale").remove();
+        gemlist.style.display = "none";
+        $("#filterlist").hide();
+        searchsale.style.display = "block";
+        $("#loadsale").hide();
+        $("#waitingsale").show();
 
-				const raised = await checksale.methods.weiRaised().call({
-					from: selectedAccount
-				});
-				const checkstat = await checksale.methods.checkStatus().call({
-					from: selectedAccount
-				});
+        if (!$('#listsale').length) {
+            const presaleContainer = document.createElement("div");
+            presaleContainer.className += "presale";
+            presaleContainer.id = "listsale";
+            get("searchsale").append(presaleContainer);
+            searchSale = false;
+        }
 
-				var gemmint = false;
-				try {
-					caudit = new web3.eth.Contract(tokabi, q.token);
-					var gemmint = await caudit.methods.GemMintDeploy().call({
-						from: selectedAccount
-					});
-				} catch (e) {} finally {}
+        const presaleList = get("listsale");
+        for (let i = 0; i < filterLength; i++) {
+            try {
+                const filterSaleId = await salelist.methods.filterSale(checksumAddress, i).call({ from: selectedAccount });
+                const saleStats = await salelist.methods.salestats(filterSaleId).call({ from: selectedAccount });
+                const saleDates = await salelist.methods.saledates(filterSaleId).call({ from: selectedAccount });
+                const auditStatus = await salelist.methods.auditextern(saleStats.token).call({ from: selectedAccount });
+                const kycStatus = await salelist.methods.kyc(saleStats.token).call({ from: selectedAccount });
+                const currentTime = Math.floor(Date.now() / 1000);
 
-				1 == xa.audit ? color_aud = "#008cba" : color_aud = "#9393931f";
+                const saleLink = `https://gemsale.app/?chain=${chainCode}&sale=${saleStats.id}&tk=${saleStats.name}#defi-presale`;
 
-				1 == ka.dox ? color_kyc = "#009688" : color_kyc = "#9393931f";
+                const logoImage = await checkImage(saleDates.logo);
 
-				var scap = web3.utils.fromWei(q.softcap, 'ether');
-				var scap = parseFloat(scap).toFixed(1);
-				var hcap = web3.utils.fromWei(q.hardcap, 'ether');
-				var hcap = parseFloat(hcap).toFixed(1);
+                const refundContract = new web3.eth.Contract(csaleabi, saleStats.acontract);
+                const raisedAmount = await refundContract.methods.weiRaised().call({ from: selectedAccount });
+                const saleStatus = await refundContract.methods.checkStatus().call({ from: selectedAccount });
 
-				var tkc = web3.utils.fromWei(raised, 'ether');
-				var tkc = parseFloat(tkc).toFixed(2);
+                let isGemMint = false;
+                try {
+                    const auditContract = new web3.eth.Contract(tokabi, saleStats.token);
+                    isGemMint = await auditContract.methods.GemMintDeploy().call({ from: selectedAccount });
+                } catch (error) {
+                    // Handle error silently
+                }
 
-				var buyts = (Number(raised) / Number(q.hardcap)) * 100;
-				var buyt = parseFloat(buyts).toFixed(0);
+                const auditColor = auditStatus.audit ? "#008cba" : "#9393931f";
+                const kycColor = kycStatus.dox ? "#009688" : "#9393931f";
 
-				if (xa.audit == true) {
-					audit_content = "Audited Contract";
-					audit_class = "audit external";
-				} else if (gemmint == true) {
-					audit_content = "GemMint Contract";
-					audit_class = "audit gemmint";
-				} else {
-					audit_content = "Unaudited Contract";
-					audit_class = "audit";
-				}
+                const softCap = parseFloat(web3.utils.fromWei(saleStats.softcap, 'ether')).toFixed(1);
+                const hardCap = parseFloat(web3.utils.fromWei(saleStats.hardcap, 'ether')).toFixed(1);
+                const raisedEther = parseFloat(web3.utils.fromWei(raisedAmount, 'ether')).toFixed(2);
+                const progress = parseFloat((Number(raisedAmount) / Number(saleStats.hardcap)) * 100).toFixed(0);
 
-				var difference = d.unlock - d.start;
-				var daysD = Math.round(difference / 86400);
-				var settime = "time" + q.id;
+                const auditContent = auditStatus.audit ? "Audited Contract" : isGemMint ? "GemMint Contract" : "Unaudited Contract";
+                const auditClass = auditStatus.audit ? "audit external" : isGemMint ? "audit gemmint" : "audit";
 
+                const daysUntilUnlock = Math.round((saleDates.unlock - saleDates.start) / 86400);
 
-				switch (checkstat) {
-					case "FAILED":
-						status_content = "✕ FAILED", status_class = "status inactive", time_text = "Presale: Failed", time_class = "time time-inactiv";
-						break;
-					case "SUCCESS":
-						status_content = "✓ SUCCESS", status_class = "status success", time_text = "Presale: Success", time_class = "time time-success";
-						break;
-					case "ENDED":
-						status_content = "⦾ ENDED", status_class = "status end", time_text = "Presale: Ended", time_class = "time time-ended";
-						break;
-					case "INACTIVE":
-						status_content = "✕ INACTIVE", status_class = "status inactive", time_text = "Presale: Inactive", time_class = "time time-inactiv";
-						break;
-					case "UPCOMING":
-						status_content = "△ UPCOMING", status_class = "status upcoming", time_text = "Presale: Upcoming", time_class = "time time-upcoming";
-						break;
-					case "LIVE":
-						status_content = "⦿ LIVE", status_class = "status live", time_text = "Presale: Live", time_class = "time time-ongoing"
-				}
+                let statusContent, statusClass, timeText, timeClass;
+                switch (saleStatus) {
+                    case "FAILED":
+                        statusContent = "✕ FAILED";
+                        statusClass = "status inactive";
+                        timeText = "Presale: Failed";
+                        timeClass = "time time-inactive";
+                        break;
+                    case "SUCCESS":
+                        statusContent = "✓ SUCCESS";
+                        statusClass = "status success";
+                        timeText = "Presale: Success";
+                        timeClass = "time time-success";
+                        break;
+                    case "ENDED":
+                        statusContent = "⦾ ENDED";
+                        statusClass = "status end";
+                        timeText = "Presale: Ended";
+                        timeClass = "time time-ended";
+                        break;
+                    case "INACTIVE":
+                        statusContent = "✕ INACTIVE";
+                        statusClass = "status inactive";
+                        timeText = "Presale: Inactive";
+                        timeClass = "time time-inactive";
+                        break;
+                    case "UPCOMING":
+                        statusContent = "△ UPCOMING";
+                        statusClass = "status upcoming";
+                        timeText = "Presale: Upcoming";
+                        timeClass = "time time-upcoming";
+                        break;
+                    case "LIVE":
+                        statusContent = "⦿ LIVE";
+                        statusClass = "status live";
+                        timeText = "Presale: Live";
+                        timeClass = "time time-ongoing";
+                        break;
+                    default:
+                        statusContent = "UNKNOWN";
+                        statusClass = "status unknown";
+                        timeText = "Presale: Unknown";
+                        timeClass = "time time-unknown";
+                }
 
-				const D = document.createElement('div');
-				D.id = 'presale' + q.id;
-				D.className = 'pre-sale new-sale';
-				D.innerHTML = `
-<div class="sale-card" data-link="${link}">
+                const presaleCard = document.createElement('div');
+                presaleCard.id = `presale${saleStats.id}`;
+                presaleCard.className = 'pre-sale new-sale';
+                presaleCard.innerHTML = `
+<div class="sale-card" data-link="${saleLink}">
    <div class="sale_header">
-      <img class="logo lozad" data-src="${resimg}" src="/static/images/imgloads.gif">
-      <p id="status" class="${status_class}">${status_content}</p>
-      <h3 class="name">${q.name}</h3>
+      <img class="logo lozad" data-src="${logoImage}" src="/static/images/imgloads.gif">
+      <p id="status" class="${statusClass}">${statusContent}</p>
+      <h3 class="name">${saleStats.name}</h3>
       <div class="price rate">
-         <p>1 ${symbol} = ${q.salerate} ${q.symbol}</p>
+         <p>1 ${symbol} = ${saleStats.salerate} ${saleStats.symbol}</p>
       </div>
       <hr>
    </div>
    <div class="card-click">
-      <i id="audit-card" style="color: ${color_aud};" class="fas fa-file-certificate gem-xlarge"></i><i id="kyc-card" style="color: ${color_kyc};" class="fas fa-id-card-alt gem-xlarge"></i>
+      <i id="audit-card" style="color: ${auditColor};" class="fas fa-file-certificate gem-xlarge"></i><i id="kyc-card" style="color: ${kycColor};" class="fas fa-id-card-alt gem-xlarge"></i>
       <div class="soft-hard-cap">
          <p>Soft / Hard Cap:</p>
-         <h5>${scap} ${symbol} - ${hcap} ${symbol}</h5>
+         <h5>${softCap} ${symbol} - ${hardCap} ${symbol}</h5>
       </div>
-      <div class="buy-meter" id="buyt${q.id}" role="progressbar" style="--value:${buyt}"></div>
-      <div class="airdrop-stats"><span class="raisedhardcap">Raised: ${tkc} ${symbol}</span><span>Hard Cap: ${hcap} ${symbol}</span></div>
+      <div class="buy-meter" id="buyt${saleStats.id}" role="progressbar" style="--value:${progress}"></div>
+      <div class="airdrop-stats"><span class="raisedhardcap">Raised: ${raisedEther} ${symbol}</span><span>Hard Cap: ${hardCap} ${symbol}</span></div>
       <div class="audits">
-         <p class="${audit_class}">${audit_content}</p>
+         <p class="${auditClass}">${auditContent}</p>
       </div>
-      <div class="liquidity"><span class="liq">Liquidity: ${d.liquidityper}%</span></div>
-      <div class="unlock"><span>Unlocks in: ${daysD} Days</span></div>
+      <div class="liquidity"><span class="liq">Liquidity: ${saleDates.liquidityper}%</span></div>
+      <div class="unlock"><span>Unlocks in: ${daysUntilUnlock} Days</span></div>
    </div>
    <div class="sale_footer">
       <hr>
-      <div id="time${q.id}" class="${time_class}">${time_text}</div>
-      <a class="cardbutton sale-link" href="${link}" target="_blank"><i class="fas fa-external-link"></i></a>
+      <div id="time${saleStats.id}" class="${timeClass}">${timeText}</div>
+      <a class="cardbutton sale-link" href="${saleLink}" target="_blank"><i class="fas fa-external-link"></i></a>
    </div>
-</div>`
-				G.appendChild(D);
+</div>`;
+                presaleList.appendChild(presaleCard);
 
-				$(document).ready(function () {
-					$('.card-click').click(function () {
-						pushUrl();
-					});
-				});
-				switch (checkstat) {
+                $(document).ready(function () {
+                    $('.card-click').click(function () {
+                        pushUrl();
+                    });
+                });
+
+                switch (saleStatus) {
 					case "UPCOMING":
-						countstart(settime, d.start, 1);
+						initializeCountdown(settime, d.start, 1);
 						break;
 					case "LIVE":
-						countstart(settime, d.end, 2)
+						initializeCountdown(settime, d.end, 2)
 				}
 
 				$("#waitingsale").hide();
