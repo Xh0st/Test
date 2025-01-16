@@ -3,10 +3,19 @@ import pandas as pd
 import numpy as np
 import time
 import os
+import base64
+import requests
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.backends import default_backend
 
 # Load API keys from environment variables
-api_key = os.getenv('')
-api_secret = os.getenv('')
+api_key = os.getenv('BINANCE_API_KEY')
+api_secret = os.getenv('BINANCE_SECRET_KEY')
+private_key_path = os.getenv('PRIVATE_KEY_PATH')
+
+# Load the private key
+with open(private_key_path, 'rb') as f:
+    private_key = load_pem_private_key(data=f.read(), password=None, backend=default_backend())
 
 # Set up exchange
 exchange = ccxt.binance({
@@ -74,6 +83,28 @@ class EnhancedScalpingStrategy:
 
 # Initialize strategy
 strategy = EnhancedScalpingStrategy()
+
+# Function to send authenticated request
+def send_authenticated_request(params):
+    params['timestamp'] = int(time.time() * 1000)  # UNIX timestamp in milliseconds
+    payload = '&'.join([f'{param}={value}' for param, value in params.items()])
+    signature = base64.b64encode(private_key.sign(payload.encode('utf-8'))).decode('utf-8')
+    params['signature'] = signature
+
+    headers = {
+        'X-MBX-APIKEY': api_key,
+    }
+
+    response = requests.post(
+        'https://testnet.binance.vision/api/v3/order',
+        headers=headers,
+        data=params,
+    )
+
+    if response.status_code == 200:
+        print('Order placed successfully:', response.json())
+    else:
+        print('Error placing order:', response.status_code, response.text)
 
 # Continuous trading loop
 while True:
