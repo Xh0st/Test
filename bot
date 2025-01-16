@@ -1,0 +1,89 @@
+import ccxt
+import pandas as pd
+import numpy as np
+import time
+import os
+
+# Load API keys from environment variables
+api_key = os.getenv('')
+api_secret = os.getenv('')
+
+# Set up exchange
+exchange = ccxt.binance({
+    'apiKey': api_key,
+    'secret': api_secret,
+})
+
+# Function to fetch market data
+def fetch_data(symbol, timeframe, limit):
+    try:
+        bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        return df
+    except ccxt.BaseError as e:
+        print(f"An error occurred: {e}")
+        return None
+
+# Function to compute RSI
+def compute_rsi(data, window):
+    delta = data['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# Function to compute MACD
+def compute_macd(data, short_window=12, long_window=26, signal_window=9):
+    short_ema = data['close'].ewm(span=short_window, adjust=False).mean()
+    long_ema = data['close'].ewm(span=long_window, adjust=False).mean()
+    macd = short_ema - long_ema
+    signal = macd.ewm(span=signal_window, adjust=False).mean()
+    return macd, signal
+
+# Function to compute Bollinger Bands
+def compute_bollinger_bands(data, window=20, num_std_dev=2):
+    rolling_mean = data['close'].rolling(window=window).mean()
+    rolling_std = data['close'].rolling(window=window).std()
+    upper_band = rolling_mean + (rolling_std * num_std_dev)
+    lower_band = rolling_mean - (rolling_std * num_std_dev)
+    return upper_band, lower_band
+
+# Strategy class
+class EnhancedScalpingStrategy:
+    def __init__(self):
+        self.entry_price = None
+
+    def execute_trade(self, symbol, action, amount):
+        if action == 'buy':
+            order = exchange.create_market_buy_order(symbol, amount)
+        elif action == 'sell':
+            order = exchange.create_market_sell_order(symbol, amount)
+        print(order)
+
+    def next(self, data):
+        if self.entry_price is None:
+            if data['rsi'] < 30 and data['macd'] > data['macd_signal'] and data['close'] < data['lower_band']:
+                self.execute_trade('ETH/USDT', 'buy', 0.1)  # Buy 0.1 ETH
+                self.entry_price = data['close']
+        else:
+            if data['close'] >= self.entry_price * 1.03 or data['rsi'] > 70:
+                self.execute_trade('ETH/USDT', 'sell', 0.1)  # Sell 0.1 ETH
+                self.entry_price = None
+
+# Initialize strategy
+strategy = EnhancedScalpingStrategy()
+
+# Continuous trading loop
+while True:
+    df = fetch_data('ETH/USDT', '1s', 100)
+    if df is not None:
+        df['rsi'] = compute_rsi(df, window=14)
+        df['macd'], df['macd_signal'] = compute_macd(df)
+        df['upper_band'], df['lower_band'] = compute_bollinger_bands(df)
+
+        for index, row in df.iterrows():
+            strategy.next(row)
+
+    time.sleep(1)  # Wait for the next second
